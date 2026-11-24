@@ -1759,7 +1759,7 @@ body.arranging .ordrag{opacity:.35;animation:none!important}
 <script type="application/json" id="embeddedBoard"></script>
 <script id="appMain">
 "use strict";
-const APP_VERSION = "136";
+const APP_VERSION = "137";
 const PRISTINE_HTML = "<!doctype html>\n" + document.documentElement.outerHTML;   // a clean copy of the app, used to save board files
 let W = 1920, H = 1080, DS = 1;   // DS: brush sizes are measured at 1920 wide and scaled to the canvas
 let CW = 960, CH = 540;
@@ -1863,7 +1863,7 @@ function rotateBy(deg) { const ctr = screenToDoc(sw / 2, sh / 2); vr = normAngle
 function resetRotation() { const ctr = screenToDoc(sw / 2, sh / 2); vr = 0; anchor(ctr, sw / 2, sh / 2); renderHud(); requestRender(); }
 let fitUntil = performance.now() + 4000;
 function resize() {
-  const r = stage.getBoundingClientRect(); dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = stage.getBoundingClientRect(); dpr = Math.min(window.devicePixelRatio || 1, 3);
   // keep the same spot of the drawing in the middle of the stage while it changes size
   const keep = fitted && sw > 80 && sh > 60 && vs > 0.02 ? screenToDoc(sw / 2, sh / 2) : null;
   sw = r.width; sh = r.height;
@@ -3988,8 +3988,8 @@ async function openBoardFile(f, handle) {
   });
 };
 $("exportPngBtn").onclick = async () => {
-  $("menu").hidden = true; const p = panel(), f = FR(), c = mkCanvas(Math.round(f.w), Math.round(f.h)), x = c.getContext("2d");
-  x.fillStyle = "#fff"; x.fillRect(0, 0, W, H); x.translate(-f.x, -f.y); for (const L of p.layers) if (L.visible) { if (isVec(L)) drawVecStrokes(x, vstrokes(L), L.opacity); else { x.globalAlpha = L.opacity; x.drawImage(L.canvas, 0, 0); } }
+  $("menu").hidden = true; const p = panel(), f = FR(), k = clamp(3840 / f.w, 1, 4), c = mkCanvas(Math.round(f.w * k), Math.round(f.h * k)), x = c.getContext("2d");
+  x.imageSmoothingQuality = "high"; x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.scale(k, k); x.translate(-f.x, -f.y); for (const L of p.layers) if (L.visible) { if (isVec(L)) drawVecStrokes(x, vstrokes(L), L.opacity); else { x.globalAlpha = L.opacity; x.drawImage(L.canvas, 0, 0, W, H); } }
   const lab = labels()[active]; offerFile(`${safeName(P.name)}_sc${safeName(p.scene)}_p${lab.n}.png`, await toBlob(c));
 };
 // iPad / iPhone: the multi-select Photos picker (the one with the check button) can hand back nothing in an embedded page.
@@ -4126,6 +4126,19 @@ $("newProjBtn").onclick = () => {
   });
 };
 $("newBoardTopBtn").onclick = () => $("newProjBtn").click();
+function openExampleBoard() {
+  const old = P && P.name ? P.name : "the current board";
+  confirmBar(`Open a fresh example board to try things out? "${old}" is kept as a backup you can go back to (File > Autosave and backups).`, "Open example", async () => {
+    if (floatSel) applyFloat();
+    try { await snapshotNow("Before example board"); } catch (e) {}
+    busy = true; floatSel = null; const stamps = (P && P.stamps) || [];
+    try { await firstRun(); } finally { busy = false; }
+    P.audio = P.audio || []; P.links = P.links || {}; P.stamps = stamps; P.refs = P.refs || []; P.models = P.models || [];
+    if (typeof layerMulti !== "undefined") layerMulti.clear();
+    await loadActive(); undoStack = []; redoStack = []; updUndo(); renderAll(); fit(); save(); boardHandle = null; updFileName();
+    toast("Example board opened. Draw over it to try the tools.");
+  });
+}
 
 /* ---------- play (animatic preview) ---------- */
 let playing = null;
@@ -4168,42 +4181,53 @@ $("play").onclick = stopPlay;
 /* ---------- example board for first run ---------- */
 function drawExample() {
   const mk = (names) => newPanel("1", names);
-  const p1 = mk(["BG", "A", "B"]), p2 = mk(["BG", "A", "B"]), p3 = mk();
+  const spec = [{ name: "BG", kind: "raster" }, { name: "A", kind: "vector" }, { name: "B", kind: "vector" }];
+  const p1 = mk(spec), p2 = mk(spec), p3 = mk();
+  const K = W / 1920;   // the drawing below is laid out for a 1920-wide board
   p1.action = "Example panel. Draw over it, or delete these panels when you start your own board."; p1.dur = 2.5;
   p2.action = "Character walks into frame."; p2.dialogue = "Hello?"; p2.dur = 2;
   p3.scene = "2"; p3.action = "Blank panel, ready to draw."; p3.dur = 2;
   const bg = c => {
-    const x = c.getContext("2d"); x.strokeStyle = "#555"; x.lineWidth = 4; x.lineCap = "round";
+    const x = c.getContext("2d"); x.scale(K, K); x.strokeStyle = "#555"; x.lineWidth = 4; x.lineCap = "round";
     x.beginPath(); x.moveTo(0, 760); x.lineTo(W, 740); x.stroke();
     x.lineWidth = 3; x.strokeRect(1220, 330, 300, 420); x.strokeRect(1290, 400, 80, 110); x.strokeRect(1410, 400, 80, 110);
     x.beginPath(); x.moveTo(1180, 335); x.lineTo(1370, 210); x.lineTo(1560, 335); x.stroke();
     x.strokeStyle = "#999"; x.lineWidth = 2; for (let i = 0; i < 7; i++) { x.beginPath(); x.moveTo(140 + i * 120, 760); x.lineTo(80 + i * 160, 1080); x.stroke(); }
     x.strokeStyle = "#888"; x.beginPath(); x.arc(330, 220, 70, 0, Math.PI * 2); x.stroke();
   };
-  const fig = (c, cx, cy, s) => {
-    const x = c.getContext("2d"); x.strokeStyle = "#151515"; x.lineWidth = 7; x.lineCap = x.lineJoin = "round";
-    x.beginPath(); x.ellipse(cx, cy - 250 * s, 62 * s, 70 * s, 0, 0, Math.PI * 2); x.stroke();
-    x.beginPath(); x.moveTo(cx - 20 * s, cy - 182 * s); x.bezierCurveTo(cx - 120 * s, cy - 160 * s, cx - 110 * s, cy + 40 * s, cx - 70 * s, cy + 60 * s);
-    x.lineTo(cx + 70 * s, cy + 60 * s); x.bezierCurveTo(cx + 110 * s, cy + 40 * s, cx + 120 * s, cy - 160 * s, cx + 20 * s, cy - 182 * s); x.closePath(); x.stroke();
-    x.beginPath(); x.moveTo(cx - 45 * s, cy + 60 * s); x.lineTo(cx - 55 * s, cy + 250 * s); x.lineTo(cx - 10 * s, cy + 250 * s); x.lineTo(cx, cy + 90 * s); x.lineTo(cx + 10 * s, cy + 250 * s); x.lineTo(cx + 55 * s, cy + 250 * s); x.lineTo(cx + 45 * s, cy + 60 * s); x.stroke();
-    x.lineWidth = 5; x.beginPath(); x.arc(cx + 22 * s, cy - 262 * s, 6 * s, 0, Math.PI * 2); x.stroke();
+  // the figure as vector lines (points with a radius), so it stays sharp at any zoom
+  const fig = (cx, cy, s) => {
+    const out = [], R = w => w * K / 2;
+    const line = (pts, w) => { const a = []; for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i]; if (i) { const [px, py] = pts[i - 1], n = Math.max(1, Math.ceil(Math.hypot(x0 - px, y0 - py) / 3)); for (let j = 1; j <= n; j++) a.push((px + (x0 - px) * j / n) * K, (py + (y0 - py) * j / n) * K, R(w)); } else a.push(x0 * K, y0 * K, R(w)); } out.push({ c: "#151515", a: 1, pts: a, bb: strokeBB(a) }); };
+    const ell = (ex, ey, rx, ry, w) => { const q = []; for (let i = 0; i <= 96; i++) { const t = i / 96 * Math.PI * 2; q.push([ex + Math.cos(t) * rx, ey + Math.sin(t) * ry]); } line(q, w); };
+    const bez = (q, p0, p1, p2, p3) => { for (let i = 1; i <= 40; i++) { const t = i / 40, u = 1 - t; q.push([u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0], u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]); } };
+    ell(cx, cy - 250 * s, 62 * s, 70 * s, 7);
+    const body = [[cx - 20 * s, cy - 182 * s]];
+    bez(body, body[0], [cx - 120 * s, cy - 160 * s], [cx - 110 * s, cy + 40 * s], [cx - 70 * s, cy + 60 * s]);
+    body.push([cx + 70 * s, cy + 60 * s]);
+    bez(body, [cx + 70 * s, cy + 60 * s], [cx + 110 * s, cy + 40 * s], [cx + 120 * s, cy - 160 * s], [cx + 20 * s, cy - 182 * s]);
+    body.push([cx - 20 * s, cy - 182 * s]); line(body, 7);
+    line([[cx - 45 * s, cy + 60 * s], [cx - 55 * s, cy + 250 * s], [cx - 10 * s, cy + 250 * s], [cx, cy + 90 * s], [cx + 10 * s, cy + 250 * s], [cx + 55 * s, cy + 250 * s], [cx + 45 * s, cy + 60 * s]], 7);
+    ell(cx + 22 * s, cy - 262 * s, 6 * s, 6 * s, 5);
+    return out;
   };
   const sets = [[p1, 900, 600, 1.2], [p2, 560, 620, 1.25]];
   const out = [];
   for (const [p, cx, cy, s] of sets) {
-    const b = mkCanvas(); bg(b); const a = mkCanvas(); fig(a, cx, cy, s);
-    p.layers[0].canvas = b; p.layers[1].canvas = a; p.layers[2].canvas = mkCanvas();
+    const b = mkCanvas(); bg(b);
+    p.layers[0].canvas = b; p.layers[1].strokes = fig(cx, cy, s); p.layers[1].canvas = mkCanvas(1, 1); p.layers[1].rasterStale = true; p.layers[2].canvas = mkCanvas(1, 1);
     out.push(p);
   }
   return { out, all: [p1, p2, p3] };
 }
 async function firstRun() {
+  P = null; setDocSize(3840, 2160);   // the example board uses the same 4K size as new boards
   const { all } = drawExample();
   P = { name: "Example board", panels: all, audio: [], links: {}, laneMute: [false, false] };
   for (const p of all) {
-    if (!p.layers[0].canvas) p.layers.forEach(L => L.canvas = mkCanvas());
+    if (!p.layers[0].canvas) p.layers.forEach(L => L.canvas = isVec(L) ? mkCanvas(1, 1) : mkCanvas());
     p.comp = compNow(p); p.thumb = thumbFrom(p.comp);
-    for (const L of p.layers) { L.blob = await toBlob(L.canvas); }
+    for (const L of p.layers) { if (!isVec(L)) L.blob = await toBlob(L.canvas); }
   }
   // keep panel 1 live, free the rest
   all.forEach((p, i) => { if (i) p.layers.forEach(L => L.canvas = null); });
@@ -7629,7 +7653,7 @@ $("appVer").textContent = "v" + APP_VERSION;
       { t: "Voice: speed and pitch…", id: "voiceBtn" }, { t: "Fade in", id: "fadeInBtn" }, { t: "Fade out", id: "fadeOutBtn" },
       { t: "Volume keyframes", id: "kfBtn", on: () => !!S.kfMode }, sep, { t: "Remove selected audio", id: "delAudioBtn" }]],
     ["Help", [
-      { t: "Take the tour", fn: () => setTimeout(tourStart, 0) }, { t: "User guide (PDF)…", fn: () => openHelp() }, { t: "Keyboard shortcuts…", fn: () => openKeys() }, sep,
+      { t: "Take the tour", fn: () => setTimeout(tourStart, 0) }, { t: "Open the example board", fn: () => openExampleBoard() }, { t: "User guide (PDF)…", fn: () => openHelp() }, { t: "Keyboard shortcuts…", fn: () => openKeys() }, sep,
       { t: "Technical help…", fn: () => toast("For technical help, email Jonathan Goldberg at jonathan@exceptional-minds.org.") }]],
   ];
   const bar = $("menubar"); let open = null;
