@@ -1360,6 +1360,7 @@ body.arranging .ordrag{opacity:.35;animation:none!important}
       <button class="ib sm" id="kfBtn" aria-pressed="false" data-tip="Keyframes: tap audio clips to add volume points"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17.4H6L12 7H22" fill="none" stroke="#ffd23f" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 13.6L9.8 17.4L6 21.2L2.2 17.4Z" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><path d="M12 3.2L15.8 7L12 10.8L8.2 7Z" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/></svg></button>
       <button class="ib sm" id="fadeInBtn" data-tip="Fade in the selected audio" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.6 20.4L12 6H21.4V20.4Z" fill="url(#ic-sky)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><path d="M2.6 20.4L12 6H21.4" fill="none" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><circle cx="2.8" cy="20.2" r="1.6" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><circle cx="12" cy="6" r="1.6" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/></svg></button>
       <button class="ib sm" id="fadeOutBtn" data-tip="Fade out the selected audio" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.6 20.4V6H12L21.4 20.4Z" fill="url(#ic-sky)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><path d="M2.6 6H12L21.4 20.4" fill="none" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="6" r="1.6" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><circle cx="21.2" cy="20.2" r="1.6" fill="url(#ic-yel)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/></svg></button>
+      <button class="ib sm" id="splitAudioBtn" data-tip="Split audio at the playhead (Alt+K)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="url(#ic-teal)" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="7" r="2.6"/><circle cx="6" cy="17" r="2.6"/><path d="M8.2 8.4L20 16M8.2 15.6L20 8"/></g></svg></button>
       <button class="ib sm" id="delAudioBtn" data-tip="Remove selected audio" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><g stroke="url(#ic-teal)" stroke-width="1.8" stroke-linecap="round"><path d="M3 11v3M6 8v9M9 5v15M12 9v7"/></g><circle cx="17.6" cy="16.8" r="4.6" fill="url(#ic-red)" stroke="rgba(0,0,0,.55)" stroke-width=".6" stroke-linejoin="round"/><path d="M15.200000000000001 16.8H20.0" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <button class="recbtn" id="recBtn" data-tip="Press and hold to record. Let go to stop."><span class="rdot"></span><span id="recLabel">Hold to record</span><span class="rtime" id="recTime"></span></button><button class="micbtn" id="micBtn" aria-haspopup="dialog" aria-expanded="false" data-tip="Choose the microphone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 14l5-5 5 5"/></svg></button>
       <span class="spacer"></span>
@@ -1759,7 +1760,7 @@ body.arranging .ordrag{opacity:.35;animation:none!important}
 <script type="application/json" id="embeddedBoard"></script>
 <script id="appMain">
 "use strict";
-const APP_VERSION = "137";
+const APP_VERSION = "138";
 const PRISTINE_HTML = "<!doctype html>\n" + document.documentElement.outerHTML;   // a clean copy of the app, used to save board files
 let W = 1920, H = 1080, DS = 1;   // DS: brush sizes are measured at 1920 wide and scaled to the canvas
 let CW = 960, CH = 540;
@@ -2506,6 +2507,8 @@ function applyEntry(e, dir) {
     refreshStaleThumbs();
   }
   else if (e.type === "repl") { for (const r of e.items) { Object.assign(r.T, dir < 0 ? r.prev : r.next); r.T.canvas = null; r.T._vc = null; r.q.comp = null; r.q.onion = null; r.q.full = null; r.q.thumbStale = true; } refreshStaleThumbs(); }
+  else if (e.type === "audio") { P.audio = (dir < 0 ? e.before : e.after).slice(); if (!P.audio.includes(selClip)) selClip = null; renderAudio(); layoutTimeline(); }
+  else if (e.type === "clipmove") { const v = dir < 0 ? e.before : e.after; e.c.start = v.s; e.c.lane = v.l; renderAudio(); layoutTimeline(); }
   else if (e.type === "cam") { e.panel.cam = e[dir < 0 ? "before" : "after"] ? JSON.parse(JSON.stringify(e[dir < 0 ? "before" : "after"])) : null; if (e.panel === p) { renderCam(); requestRender(); } layoutTimeline(); }
   else if (e.type === "group") { (dir < 0 ? [...e.items].reverse() : e.items).forEach(it => applyEntry(it, dir)); }
 }
@@ -2590,7 +2593,7 @@ function serialize() {
   return { version: 1, savedAt: Date.now(), name: P.name, active, width: W, height: H, frame: P.frame || null, panels: P.panels.map(p => ({ id: p.id, cam: p.cam || null, scene: p.scene, dur: p.dur, action: p.action, dialogue: p.dialogue, notes: p.notes, thumb: p.thumb, activeLayerId: p.activeLayerId,
     layers: p.layers.map(L => ({ id: L.id, name: L.name, kind: L.kind || "raster", visible: L.visible, opacity: L.opacity, blob: L.link || isVec(L) ? null : L.blob, link: L.link || null, strokes: isVec(L) && !L.link ? packStrokes(L.strokes) : null })) })),
     links: Object.values(P.links || {}).filter(k => P.panels.some(q => q.layers.some(L => L.link === k.id))).map(k => ({ id: k.id, name: k.name, kind: k.kind || "raster", blob: k.blob || null, strokes: k.strokes ? packStrokes(k.strokes) : null })),
-    script: P.script || null, loop: P.loop || null, audio: (P.audio || []).map(c => ({ id: c.id, name: c.name, start: c.start, lane: c.lane, dur: c.dur, blob: c.blob, fx: c.fx || null, env: c.env && c.env.length ? c.env.map(k => ({ t: k.t, g: k.g })) : null })), models: (P.models || []).map(m => ({ id: m.id, name: m.name, files: modelFiles(m).map(f => ({ name: f.name, blob: f.blob })), view: m.view || null, parts: m.parts || null })), modelActive: P.modelActive || null, refs: (P.refs || []).map(r => ({ id: r.id, name: r.name, blob: r.blob })), refActive: P.refActive || null, stamps: (P.stamps || []).map(st => ({ id: st.id, w: st.w, h: st.h, blob: st.blob, strokes: st.strokes ? packStrokes(st.strokes) : null })), activeStamp: P.activeStamp || null, laneMute: P.laneMute || [false, false] };
+    script: P.script || null, loop: P.loop || null, audio: (P.audio || []).map(c => ({ id: c.id, name: c.name, start: c.start, lane: c.lane, dur: c.dur, blob: c.blob, tin: c.tin ?? null, tout: c.tout ?? null, fx: c.fx || null, env: c.env && c.env.length ? c.env.map(k => ({ t: k.t, g: k.g })) : null })), models: (P.models || []).map(m => ({ id: m.id, name: m.name, files: modelFiles(m).map(f => ({ name: f.name, blob: f.blob })), view: m.view || null, parts: m.parts || null })), modelActive: P.modelActive || null, refs: (P.refs || []).map(r => ({ id: r.id, name: r.name, blob: r.blob })), refActive: P.refActive || null, stamps: (P.stamps || []).map(st => ({ id: st.id, w: st.w, h: st.h, blob: st.blob, strokes: st.strokes ? packStrokes(st.strokes) : null })), activeStamp: P.activeStamp || null, laneMute: P.laneMute || [false, false] };
 }
 function hydrate(o) {
   return { name: o.name || "Untitled board", w: +o.width || 1920, h: +o.height || 1080, frame: o.frame && +o.frame.w ? { x: +o.frame.x, y: +o.frame.y, w: +o.frame.w } : null, panels: o.panels.map(p => Object.assign(newPanel(p.scene), {
@@ -2604,7 +2607,7 @@ function hydrate(o) {
     laneMute: Array.isArray(o.laneMute) ? o.laneMute.slice(0, 2) : [false, false],
     script: o.script && Array.isArray(o.script.lines) ? o.script : null,
     loop: o.loop && isFinite(o.loop.a) && isFinite(o.loop.b) && o.loop.b > o.loop.a ? { a: +o.loop.a, b: +o.loop.b } : null,
-    audio: (o.audio || []).map(c => ({ id: c.id || uid(), name: c.name || "Audio", start: +c.start || 0, lane: c.lane ? 1 : 0, dur: +c.dur || 1, blob: c.blob || null, fx: c.fx || null, env: Array.isArray(c.env) ? c.env.map(k => ({ t: +k.t || 0, g: clamp(+k.g, 0, 1) })) : null, buffer: null, peaks: null, drawnW: 0 })) };
+    audio: (o.audio || []).map(c => ({ id: c.id || uid(), name: c.name || "Audio", start: +c.start || 0, lane: c.lane ? 1 : 0, dur: +c.dur || 1, blob: c.blob || null, tin: c.tin != null ? +c.tin : null, tout: c.tout != null ? +c.tout : null, fx: c.fx || null, env: Array.isArray(c.env) ? c.env.map(k => ({ t: +k.t || 0, g: clamp(+k.g, 0, 1) })) : null, buffer: null, peaks: null, drawnW: 0 })) };
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { if (floatSel) applyFloat(); save(); } });
 
@@ -3096,8 +3099,67 @@ function computePeaks(buf) {
 }
 async function decodeClip(c) {
   if (c.buffer || !c.blob) return true;
-  try { const ab = await c.blob.arrayBuffer(); c.raw = await new Promise((res, rej) => { const r = getAC().decodeAudioData(ab, res, rej); if (r && r.then) r.then(res, rej); }); c.buffer = applyVoice(c.raw, c.fx); c.dur = c.buffer.duration; c.peaks = computePeaks(c.buffer); c.drawnW = 0; return true; }
+  try {
+    if (!c.full) { const ab = await c.blob.arrayBuffer(); c.full = await new Promise((res, rej) => { const r = getAC().decodeAudioData(ab, res, rej); if (r && r.then) r.then(res, rej); }); }
+    c.raw = trimRaw(c.full, c.tin, c.tout); c.buffer = applyVoice(c.raw, c.fx); c.dur = c.buffer.duration; c.peaks = computePeaks(c.buffer); c.drawnW = 0; return true; }
   catch (e) { console.warn(e); return false; }
+}
+// a split clip plays part of its original recording: tin to tout, in seconds of the original
+function trimRaw(full, tin, tout) {
+  if (tin == null && tout == null) return full;
+  const sr = full.sampleRate, a = clamp(Math.round((tin || 0) * sr), 0, full.length - 1), b = clamp(Math.round((tout ?? full.duration) * sr), a + 1, full.length);
+  const out = getAC().createBuffer(full.numberOfChannels, b - a, sr);
+  for (let ch = 0; ch < full.numberOfChannels; ch++) out.getChannelData(ch).set(full.getChannelData(ch).subarray(a, b));
+  return out;
+}
+function audioSnap() { return (P.audio || []).slice(); }
+function audioRecord(before, label) { pushUndo({ type: "audio", before, after: audioSnap() }); }
+// split a clip at a time on the timeline (seconds). Both halves keep the original recording, so nothing loses quality.
+function splitClip(c, t) {
+  c = c || selClip; if (!c) { toast("Tap an audio clip first."); return false; }
+  if (!c.raw || !c.buffer) { toast("That clip is still loading. Try again in a moment."); return false; }
+  const lt = t - c.start;
+  if (lt < 0.05 || lt > c.dur - 0.05) { toast("Put the playhead inside the clip where you want to cut it."); return false; }
+  const before = audioSnap(), ratio = c.raw.duration / c.buffer.duration, t0 = c.tin || 0, cut = t0 + lt * ratio, endRaw = c.tout ?? (t0 + c.raw.duration);
+  const env = c.env || [], g = envAt(c, lt);
+  const A = { ...c, id: uid(), tout: cut, env: env.length ? [...env.filter(k => k.t < lt - 0.005), { t: lt, g }] : null, drawnW: 0, _lastTap: 0 };
+  const B = { ...c, id: uid(), start: Math.round((c.start + lt) * 1000) / 1000, tin: cut, tout: endRaw, env: env.length ? [{ t: 0, g }, ...env.filter(k => k.t > lt + 0.005).map(k => ({ t: k.t - lt, g: k.g }))] : null, drawnW: 0, _lastTap: 0 };
+  for (const X of [A, B]) { X.raw = trimRaw(c.full, X.tin, X.tout); X.buffer = applyVoice(X.raw, X.fx); X.dur = X.buffer.duration; X.peaks = computePeaks(X.buffer); X.peaksR = null; }
+  const i = P.audio.indexOf(c); P.audio.splice(i, 1, A, B);
+  audioRecord(before);
+  selClip = B; renderAudio(); layoutTimeline(); scheduleSave();
+  toast(`Split "${c.name}" at ${fmtTime(t)}.`);
+  return true;
+}
+function splitAudioAtPlayhead() {
+  // the selected clip if the playhead is in it, otherwise whichever clip is under the playhead
+  let c = selClip && playheadT > selClip.start && playheadT < selClip.start + selClip.dur ? selClip : null;
+  if (!c) { const hits = (P.audio || []).filter(o => playheadT > o.start + 0.05 && playheadT < o.start + o.dur - 0.05); c = hits.length === 1 ? hits[0] : hits.find(o => o === selClip) || hits[0]; }
+  if (!c) { toast("Move the playhead over an audio clip, then split."); return; }
+  splitClip(c, playheadT);
+}
+function openClipMenu(c, x, y, at) {
+  selectClip(c);
+  const m = document.createElement("div"); m.className = "mbdrop layermenu"; m.setAttribute("role", "menu");
+  const inPh = playheadT > c.start + 0.05 && playheadT < c.start + c.dur - 0.05;
+  const items = [
+    { t: "Split here", fn: () => splitClip(c, at), off: !(at > c.start + 0.05 && at < c.start + c.dur - 0.05) },
+    { t: "Split at the playhead", k: "Alt K", fn: () => splitClip(c, playheadT), off: !inPh }, null,
+    { t: "Voice: speed and pitch…", fn: () => openVoice(c) },
+    { t: "Fade in", fn: () => addFade("in") }, { t: "Fade out", fn: () => addFade("out") }, null,
+    { t: "Remove", fn: () => removeClip() },
+  ];
+  for (const it of items) {
+    if (!it) { const sp = document.createElement("div"); sp.className = "mbsep"; m.append(sp); continue; }
+    const b = document.createElement("button"); b.className = "mbitem"; b.setAttribute("role", "menuitem"); b.disabled = !!it.off;
+    b.innerHTML = '<span class="mbchk"></span><span class="mbt"></span><span class="mbk"></span>'; b.querySelector(".mbt").textContent = it.t; if (it.k) b.querySelector(".mbk").textContent = it.k;
+    b.onclick = () => { close(); it.fn(); }; m.append(b);
+  }
+  document.body.append(m);
+  m.style.left = clamp(x, 6, innerWidth - m.offsetWidth - 6) + "px"; m.style.top = clamp(y - m.offsetHeight - 6, 6, innerHeight - m.offsetHeight - 6) + "px";
+  const off = e => { if (!m.contains(e.target)) close(); }, esc = e => { if (e.key === "Escape") close(); };
+  function close() { m.remove(); document.removeEventListener("pointerdown", off, true); document.removeEventListener("keydown", esc, true); }
+  setTimeout(() => { document.addEventListener("pointerdown", off, true); document.addEventListener("keydown", esc, true); }, 0);
 }
 async function decodeAll() { for (const c of P.audio || []) await decodeClip(c); if (P) layoutTimeline(); }
 function panelStart(i) { let t = 0; for (let k = 0; k < i; k++) t += +P.panels[k].dur; return t; }
@@ -3116,7 +3178,7 @@ function renderAudio() {
     el.onpointerdown = e => {
       e.preventDefault(); const nowT = performance.now(); if (c._lastTap && nowT - c._lastTap < 330) { c._lastTap = 0; openVoice(c); return; } c._lastTap = nowT;
       selectClip(c); if (S.kfMode) { envPointer(e, el, c); return; } el.setPointerCapture(e.pointerId);
-      const s0 = c.start, l0 = c.lane, x0 = e.clientX, y0 = e.clientY, pps = S.tlZoom;
+      const s0 = c.start, l0 = c.lane, x0 = e.clientX, y0 = e.clientY, pps = S.tlZoom, mv0 = { s: c.start, l: c.lane };
       const bounds = P.panels.map((_, i) => panelStart(i)); bounds.push(panelStart(P.panels.length));
       el.onpointermove = ev => {
         let ns = Math.max(0, s0 + (ev.clientX - x0) / pps);
@@ -3125,9 +3187,18 @@ function renderAudio() {
         c.lane = clamp(l0 + Math.round((ev.clientY - y0) / LANE_H), 0, 1);
         layoutAudio();
       };
-      el.onpointerup = el.onpointercancel = () => { el.onpointermove = el.onpointerup = el.onpointercancel = null; layoutTimeline(); scheduleSave(); };
+      el.onpointerup = el.onpointercancel = () => { el.onpointermove = el.onpointerup = el.onpointercancel = null; if (c.start !== mv0.s || c.lane !== mv0.l) pushUndo({ type: "clipmove", c, before: mv0, after: { s: c.start, l: c.lane } }); layoutTimeline(); scheduleSave(); };
     };
     el.onkeydown = e => { if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeClip(); } };
+    const timeAt = cx => { const r = el.getBoundingClientRect(); return c.start + clamp((cx - r.left) / r.width, 0, 1) * c.dur; };
+    el.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); openClipMenu(c, e.clientX, e.clientY, timeAt(e.clientX)); };
+    el.addEventListener("pointerdown", e => {
+      if (e.pointerType === "mouse") return;
+      const x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = c.lane;
+      const t = setTimeout(() => { if (Math.abs(c.start - s0) < 0.001 && c.lane === l0) { el.onpointermove = el.onpointerup = el.onpointercancel = null; openClipMenu(c, x0, y0, timeAt(x0)); } }, 550);
+      const stop = () => { clearTimeout(t); el.removeEventListener("pointerup", stop); el.removeEventListener("pointercancel", stop); };
+      el.addEventListener("pointerup", stop); el.addEventListener("pointercancel", stop);
+    });
   }
   updAudioBtns();
 }
@@ -3308,10 +3379,11 @@ function envPointer(e, el, c) {
 if (S.kfMode) setTimeout(() => setKfMode(true, true), 0);
 function removeClip() {
   const c = selClip; if (!c) return;
-  confirmBar(`Remove "${c.name}" from the audio track?`, "Remove", () => { P.audio = P.audio.filter(x => x !== c); selClip = null; renderAudio(); layoutTimeline(); scheduleSave(); });
+  confirmBar(`Remove "${c.name}" from the audio track?`, "Remove", () => { const b0 = audioSnap(); P.audio = P.audio.filter(x => x !== c); audioRecord(b0); selClip = null; renderAudio(); layoutTimeline(); scheduleSave(); });
 }
 $("addAudioBtn").onclick = () => { getAC(); $("audioFile").value = ""; $("audioFile").click(); };
 $("delAudioBtn").onclick = removeClip;
+$("splitAudioBtn").onclick = () => splitAudioAtPlayhead();
 $("audioFile").onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
   P.audio = P.audio || [];
@@ -7651,7 +7723,7 @@ $("appVer").textContent = "v" + APP_VERSION;
     ["Audio", [
       { t: "Import audio…", id: "addAudioBtn" }, { t: "Choose microphone…", fn: () => setTimeout(openMicPop, 0) }, { t: "Record dialogue…", fn: () => { if (inClaude()) showRecordHelp(); else toast("Press and hold the red Record button in the timeline while you talk. Let go to stop."); } }, sep,
       { t: "Voice: speed and pitch…", id: "voiceBtn" }, { t: "Fade in", id: "fadeInBtn" }, { t: "Fade out", id: "fadeOutBtn" },
-      { t: "Volume keyframes", id: "kfBtn", on: () => !!S.kfMode }, sep, { t: "Remove selected audio", id: "delAudioBtn" }]],
+      { t: "Volume keyframes", id: "kfBtn", on: () => !!S.kfMode }, sep, { t: "Split audio at the playhead", fn: () => splitAudioAtPlayhead(), act: "splitAudio" }, { t: "Remove selected audio", id: "delAudioBtn" }]],
     ["Help", [
       { t: "Take the tour", fn: () => setTimeout(tourStart, 0) }, { t: "Open the example board", fn: () => openExampleBoard() }, { t: "User guide (PDF)…", fn: () => openHelp() }, { t: "Keyboard shortcuts…", fn: () => openKeys() }, sep,
       { t: "Technical help…", fn: () => toast("For technical help, email Jonathan Goldberg at jonathan@exceptional-minds.org.") }]],
@@ -7748,6 +7820,7 @@ const ACTIONS = [
   ["Edit", "cutSel", "Cut the selection", ["Cmd+X"], () => cutSelection()],
   ["Timeline", "split", "Split panel at the playhead", ["Cmd+K"], () => splitAtPlayhead()],
   ["Timeline", "splitScene", "Split to a new scene at the playhead", ["Cmd+Shift+K"], () => splitToNewScene()],
+  ["Timeline", "splitAudio", "Split audio at the playhead", ["Alt+K"], () => splitAudioAtPlayhead()],
   ["Timeline", "newPanel", "New panel", [], () => $("addPanelBtn").click()],
   ["Timeline", "newPanelBefore", "New panel before", [], () => $("addPanelBeforeBtn").click()],
   ["Timeline", "newSceneBefore", "New scene before", [], () => $("addSceneBeforeBtn").click()],
