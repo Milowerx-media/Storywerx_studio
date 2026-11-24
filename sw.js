@@ -1,6 +1,6 @@
 // Storywerx offline helper. It keeps a copy of the app on this computer so the installed app
 // opens without internet, and it fetches the newest version whenever you're online.
-const VERSION = "sbs-138";
+const VERSION = "sbs-139";
 const SHELL = ["./", "index.html", "guide.pdf", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-32.png"];
 const LIBS = /^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
 self.addEventListener("install", e => {
