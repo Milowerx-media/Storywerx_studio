@@ -1473,7 +1473,7 @@ body.arranging .ordrag{opacity:.35;animation:none!important}
     <div class="refsize" id="scSizeGrip" aria-hidden="true"></div>
   </section>
   <input type="file" id="scFile" class="offscreen" tabindex="-1" aria-hidden="true">
-  <input type="file" id="brushFile" accept=".tbr,.xml,.abr" class="offscreen" tabindex="-1" aria-hidden="true">
+  <input type="file" id="brushFile" accept=".tbr,.xml,.abr,.kpp,.bundle,.gbr,.gih,.png" class="offscreen" tabindex="-1" aria-hidden="true">
   <input type="file" id="libDirIn" webkitdirectory directory multiple class="offscreen" tabindex="-1" aria-hidden="true">
   <input type="file" id="libFilesIn" accept="image/*" multiple class="offscreen" tabindex="-1" aria-hidden="true">
   <section class="refwin aiwin" id="aiWin" hidden aria-label="Asset maker">
@@ -1762,7 +1762,7 @@ body.arranging .ordrag{opacity:.35;animation:none!important}
 <script type="application/json" id="embeddedBoard"></script>
 <script id="appMain">
 "use strict";
-const APP_VERSION = "139";
+const APP_VERSION = "140";
 const PRISTINE_HTML = "<!doctype html>\n" + document.documentElement.outerHTML;   // a clean copy of the app, used to save board files
 let W = 1920, H = 1080, DS = 1;   // DS: brush sizes are measured at 1920 wide and scaled to the canvas
 let CW = 960, CH = 540;
@@ -1932,7 +1932,7 @@ function render() { if (typeof textBox !== "undefined" && textBox) styleTextBox(
     c.lineWidth = 1.5 / vs; c.strokeStyle = "rgba(60,120,180,.9)"; c.stroke();
   }
   if (S.tool === "camera") drawCam(c);
-  if (S.tool === "lasso" || S.tool === "select") drawSelOverlay(c);
+  if (S.tool === "lasso" || S.tool === "select" || S.tool === "cutter") drawSelOverlay(c);
   if (stroke && stroke.tool === "picker") {
     const p0 = stroke.pt, R = 34 / vs;
     c.save(); c.lineWidth = 14 / vs; c.strokeStyle = S.color; c.beginPath(); c.arc(p0.x, p0.y, R, 0, 6.2832); c.stroke();
@@ -2098,8 +2098,9 @@ function airBegin(e, L, p, t) {
   const D = Math.max(t.size * DS, 8);
   stroke = { tool: "airbrush", pid: e.pointerId, type: e.pointerType, ctx: bctx, layer: L, t, sx: p.x, sy: p.y, lx: p.x, ly: p.y, lw: t.size,
     buffered: true, opacity: t.opacity / 100, minx: p.x - t.size, miny: p.y - t.size, maxx: p.x + t.size, maxy: p.y + t.size,
-    air: { sprite: t.soft ? null : makeDab(D, S.color, t.hard), carry: 0, p: pressureOf(e) }, grain: t.grain > 0 ? grainPatFor(t.grain) : null };
+    air: { sprite: t.soft ? null : (t.tip && TIPS.has(t.tip) ? tipColorDab(t.tip, D, S.color) : makeDab(D, S.color, t.hard)), carry: 0, p: pressureOf(e) }, grain: t.grain > 0 ? grainPatFor(t.grain) : null };
   if (t.soft) softStart(stroke, S.color, D, t.hard);
+  if (t.tip && TIPS.has(t.tip)) noteTipUse(t.tip);
   if (isVec(L)) stroke.vecAir = { pts: [], pp: [] };
   if (!isVec(L)) { sctx.clearRect(0, 0, W, H); sctx.drawImage(L.canvas, 0, 0); }
   dab(stroke, p.x, p.y); requestRender(); return true;
@@ -2290,7 +2291,7 @@ function sgDab(x, y, r, v) {   // two triangles covering the dab
 }
 function sgDraw() { const g = SG; if (!g.q.length) return; const gl = g.gl; gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(g.q), gl.STREAM_DRAW); gl.drawArrays(gl.TRIANGLES, 0, g.q.length / 6); g.q = []; }
 function softStart(s, color, D, hard) {
-  const g = softGL();
+  const g = s.t && s.t.tip ? null : softGL();
   s.soft = { gl: !!g, m: g ? null : softMask(), D, c: color, h: hard, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
   if (g) sgBegin(color, hard);
 }
@@ -2313,18 +2314,19 @@ function softStrokeCanvas(st) {
   const x0 = Math.floor(bb[0]) - 2, y0 = Math.floor(bb[1]) - 2, w = Math.max(1, Math.ceil(bb[2]) - x0 + 2), h = Math.max(1, Math.ceil(bb[3]) - y0 + 2);
   const k = w * h > 2.6e6 ? Math.sqrt(2.6e6 / (w * h)) : 1, cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
   const cv = mkCanvas(cw, ch), x = cv.getContext("2d"), t = { flow: f.fl, flowMin: f.fmn, opMin: f.omn, spacing: f.sp, curve: f.cv };
-  const g = f.m === "soft" && cw <= W && ch <= H && !(stroke && stroke.soft) ? softGL() : null;
+  const tip = f.tip && TIPS.has(f.tip) ? f.tip : null;
+  const g = !tip && f.m === "soft" && cw <= W && ch <= H && !(stroke && stroke.soft) ? softGL() : null;
   if (g) {
     sgBegin(st.c, f.h, [x0, y0], k);
     for (let i = 0, j = 0; i < a.length; i += 3, j++) { const v = softLevel(t, (pp[j] ?? 255) / 255); if (v > 0.008) sgDab(a[i], a[i + 1], a[i + 2], v); }
     sgDraw(); x.drawImage(g.cv, 0, 0, cw, ch, 0, 0, cw, ch);
   } else if (f.m === "soft") {
     const m = softMask(cw, ch);
-    for (let i = 0, j = 0; i < a.length; i += 3, j++) { const lv = Math.round(softLevel(t, (pp[j] ?? 255) / 255) * 63); if (!lv) continue; const d = a[i + 2] * 2 * k; m.drawImage(softSprite(f.D, f.h, lv), (a[i] - x0) * k - d / 2, (a[i + 1] - y0) * k - d / 2, d, d); }
+    for (let i = 0, j = 0; i < a.length; i += 3, j++) { const lv = Math.round(softLevel(t, (pp[j] ?? 255) / 255) * 63); if (!lv) continue; const d = a[i + 2] * 2 * k; if (tip) { const [dw, dh] = tipDrawSize(d, tip); m.drawImage(tipSoftSprite(tip, f.D, lv), (a[i] - x0) * k - dw / 2, (a[i + 1] - y0) * k - dh / 2, dw, dh); continue; } m.drawImage(softSprite(f.D, f.h, lv), (a[i] - x0) * k - d / 2, (a[i + 1] - y0) * k - d / 2, d, d); }
     maskToPaint(m, x, 0, 0, cw, ch, 0, 0, st.c);
   } else {
-    const spr = makeDab(f.D, st.c, f.h);
-    for (let i = 0, j = 0; i < a.length; i += 3, j++) { const p = (pp[j] ?? 255) / 255, d = a[i + 2] * 2 * k; x.globalAlpha = (f.fl / 100) * (0.15 + 0.85 * p); x.drawImage(spr, (a[i] - x0) * k - d / 2, (a[i + 1] - y0) * k - d / 2, d, d); }
+    const spr = tip ? tipColorDab(tip, f.D, st.c) : makeDab(f.D, st.c, f.h);
+    for (let i = 0, j = 0; i < a.length; i += 3, j++) { const p = (pp[j] ?? 255) / 255, d = a[i + 2] * 2 * k, [dw, dh] = tip ? tipDrawSize(d, tip) : [d, d]; x.globalAlpha = (f.fl / 100) * (0.15 + 0.85 * p); x.drawImage(spr, (a[i] - x0) * k - dw / 2, (a[i + 1] - y0) * k - dh / 2, dw, dh); }
     x.globalAlpha = 1;
   }
   if (f.g > 0) {   // paper grain, lined up with the board so neighboring strokes share it
@@ -2338,15 +2340,63 @@ function softStrokeCanvas(st) {
 function vcopy(st, pts, pp) { const o = { c: st.c, a: st.a, pts, bb: strokeBB(pts) }; if (st.tx) o.tx = st.tx; if (st.sf) { o.sf = st.sf; o.pp = pp || st.pp; } return o; }
 function dabSize(s) { const t = s.t, p = Math.pow(clamp(s.air.p, 0, 1), t.curve || 1); return Math.max(0.6, t.size * DS * (t.min + (1 - t.min) * p)); }
 function dabStep(s) { return Math.max(0.35, dabSize(s) * (s.t.spacing ?? 4) / 100); }
+/* ---------- brush tips: a picture used as the brush shape (Photoshop, Krita and GIMP brushes) ---------- */
+// A tip is kept as a gray picture (white = paint) on black. Tips live in this browser, and boards keep copies of the ones they use.
+const TIPS = new Map();
+function tipFromCanvas(cv, name, id) {
+  id = id || "tip_" + uid(); const t = { id, name: name || "Brush tip", cv, ar: cv.height / cv.width }; TIPS.set(id, t); return t;
+}
+function tipFromGray(gray, w, h, name) {
+  // white = paint. Shrink big tips (they get scaled to the brush size anyway).
+  const src = mkCanvas(w, h), sx = src.getContext("2d"), im = sx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) { const v = gray[i]; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+  sx.putImageData(im, 0, 0);
+  const k = Math.min(1, 256 / Math.max(w, h)), cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+  let cv = src; if (k < 1) { cv = mkCanvas(cw, ch); const x = cv.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(src, 0, 0, cw, ch); }
+  const t = tipFromCanvas(cv, name); t.ow = w; t.oh = h; return t;
+}
+// some brush files store paint as black on white: flip those so paint is always white
+function grayFixInvert(g, w, h) {
+  let sum = 0, n = 0; for (let x = 0; x < w; x++) { sum += g[x] + g[(h - 1) * w + x]; n += 2; } for (let y = 0; y < h; y++) { sum += g[y * w] + g[y * w + w - 1]; n += 2; }
+  if (sum / n > 128) for (let i = 0; i < g.length; i++) g[i] = 255 - g[i];
+  return g;
+}
+const tipSprites = new Map();
+function tipSoftSprite(id, D, lv) {   // gray tip at coverage level lv (0..63) on black, for the soft mask
+  const t = TIPS.get(id); if (!t) return null; D = Math.max(4, Math.ceil(D)); const key = id + "|" + D + "|" + lv; let c = tipSprites.get(key); if (c) return c;
+  if (tipSprites.size > 800) tipSprites.clear();
+  const h = Math.max(2, Math.round(D * t.ar)); c = mkCanvas(D, h); const x = c.getContext("2d"); x.fillStyle = "#000"; x.fillRect(0, 0, D, h);
+  x.globalAlpha = lv / 63; x.imageSmoothingQuality = "high"; x.drawImage(t.cv, 0, 0, D, h); tipSprites.set(key, c); return c;
+}
+function tipColorDab(id, D, color) {   // the tip in a color, with see-through where the tip is black
+  const t = TIPS.get(id); if (!t) return null; D = Math.max(4, Math.ceil(D)); const key = id + "|c|" + D + "|" + color; let c = tipSprites.get(key); if (c) return c;
+  const h = Math.max(2, Math.round(D * t.ar)); c = mkCanvas(D, h); const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(t.cv, 0, 0, D, h);
+  const im = x.getImageData(0, 0, D, h), d = im.data, [R, G, B] = hexRGB(color);
+  for (let i = 0; i < d.length; i += 4) { const a = d[i]; d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = a; }
+  x.putImageData(im, 0, 0); tipSprites.set(key, c); return c;
+}
+async function tipToDataURL(id) { const t = TIPS.get(id); return t ? t.cv.toDataURL("image/png") : null; }
+async function tipFromDataURL(id, name, url) {
+  if (TIPS.has(id)) return TIPS.get(id);
+  const im = new Image(); im.src = url; await im.decode();
+  const cv = mkCanvas(im.naturalWidth, im.naturalHeight); cv.getContext("2d").drawImage(im, 0, 0); return tipFromCanvas(cv, name, id);
+}
+async function saveTips() { const o = {}; for (const [id, t] of TIPS) if (!t.fromBoard) o[id] = { name: t.name, url: t.cv.toDataURL("image/png") }; try { await idbPut("tips", o); } catch (e) {} }
+async function loadTips() { let o = null; try { o = await idbGet("tips"); } catch (e) {} for (const id in o || {}) { try { await tipFromDataURL(id, o[id].name, o[id].url); } catch (e) {} } }
+// boards carry the tips their strokes use, so they look the same on another device
+async function boardTipsIn(o) { for (const id in (o && o.tips) || {}) { if (!TIPS.has(id)) { try { const t = await tipFromDataURL(id, o.tips[id].name, o.tips[id].url); t.fromBoard = true; } catch (e) {} } } }
+function noteTipUse(id) { if (!id || !P) return; P.tips = P.tips || {}; if (!P.tips[id]) { const t = TIPS.get(id); if (t) P.tips[id] = { name: t.name, url: t.cv.toDataURL("image/png") }; } }
+function tipDrawSize(d, id) { const t = TIPS.get(id); return t ? [d, d * t.ar] : [d, d]; }
 function dab(s, x, y) {
   const t = s.t, d = dabSize(s), r = d / 2;
   if (s.vecAir) { s.vecAir.pts.push(Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(r * 100) / 100); s.vecAir.pp.push(Math.round(clamp(s.air.p, 0, 1) * 255)); }
   if (s.soft) {
     const sf = s.soft, v = softLevel(t, s.air.p), lv = Math.round(v * 63);
-    if (lv) { if (sf.gl && SG) sgDab(x, y, r, v); else sf.m.drawImage(softSprite(sf.D, t.hard, lv), x - r, y - r, d, d); sf.x0 = Math.min(sf.x0, x - r); sf.y0 = Math.min(sf.y0, y - r); sf.x1 = Math.max(sf.x1, x + r); sf.y1 = Math.max(sf.y1, y + r); }
+    if (lv) { if (t.tip && TIPS.has(t.tip)) { const [dw, dh] = tipDrawSize(d, t.tip); sf.m.drawImage(tipSoftSprite(t.tip, sf.D, lv), x - dw / 2, y - dh / 2, dw, dh); } else if (sf.gl && SG) sgDab(x, y, r, v); else sf.m.drawImage(softSprite(sf.D, t.hard, lv), x - r, y - r, d, d); sf.x0 = Math.min(sf.x0, x - r); sf.y0 = Math.min(sf.y0, y - r); sf.x1 = Math.max(sf.x1, x + r); sf.y1 = Math.max(sf.y1, y + r); }
   } else {
     s.ctx.globalAlpha = (t.flow / 100) * (0.15 + 0.85 * s.air.p);
-    s.ctx.drawImage(s.air.sprite, x - r, y - r, d, d);
+    if (t.tip && TIPS.has(t.tip)) { const [dw, dh] = tipDrawSize(d, t.tip); s.ctx.drawImage(s.air.sprite, x - dw / 2, y - dh / 2, dw, dh); }
+    else s.ctx.drawImage(s.air.sprite, x - r, y - r, d, d);
   }
   s.minx = Math.min(s.minx, x - r); s.miny = Math.min(s.miny, y - r); s.maxx = Math.max(s.maxx, x + r); s.maxy = Math.max(s.maxy, y + r);
 }
@@ -2437,7 +2487,7 @@ function endStroke(cancel) {
       const t = s.t, va = s.vecAir;
       if (va.pts.length) {
         const st = { c: S.color, a: t.opacity / 100, pts: va.pts, pp: va.pp, bb: strokeBB(va.pts),
-          sf: { m: t.soft ? "soft" : "build", h: t.hard, fl: t.flow, fmn: t.flowMin ?? 0.15, omn: t.opMin ?? 1, sp: t.spacing || 4, cv: t.curve || 1, g: t.grain || 0, D: Math.max(t.size * DS, 8) } };
+          sf: { m: t.soft ? "soft" : "build", h: t.hard, fl: t.flow, fmn: t.flowMin ?? 0.15, omn: t.opMin ?? 1, sp: t.spacing || 4, cv: t.curve || 1, g: t.grain || 0, D: Math.max(t.size * DS, 8), tip: t.tip && TIPS.has(t.tip) ? t.tip : undefined } };
         const before = vstrokes(L), after = s.behind ? [st].concat(before) : before.concat([st]); setVStrokes(L, after); pushUndo({ type: "vec", layer: L, before, after });
       }
     }
@@ -2596,7 +2646,7 @@ function serialize() {
   return { version: 1, savedAt: Date.now(), name: P.name, active, width: W, height: H, frame: P.frame || null, panels: P.panels.map(p => ({ id: p.id, cam: p.cam || null, scene: p.scene, dur: p.dur, action: p.action, dialogue: p.dialogue, notes: p.notes, thumb: p.thumb, activeLayerId: p.activeLayerId,
     layers: p.layers.map(L => ({ id: L.id, name: L.name, kind: L.kind || "raster", visible: L.visible, opacity: L.opacity, blob: L.link || isVec(L) ? null : L.blob, link: L.link || null, strokes: isVec(L) && !L.link ? packStrokes(L.strokes) : null })) })),
     links: Object.values(P.links || {}).filter(k => P.panels.some(q => q.layers.some(L => L.link === k.id))).map(k => ({ id: k.id, name: k.name, kind: k.kind || "raster", blob: k.blob || null, strokes: k.strokes ? packStrokes(k.strokes) : null })),
-    script: P.script || null, loop: P.loop || null, audio: (P.audio || []).map(c => ({ id: c.id, name: c.name, start: c.start, lane: c.lane, dur: c.dur, blob: c.blob, tin: c.tin ?? null, tout: c.tout ?? null, fx: c.fx || null, env: c.env && c.env.length ? c.env.map(k => ({ t: k.t, g: k.g })) : null })), models: (P.models || []).map(m => ({ id: m.id, name: m.name, files: modelFiles(m).map(f => ({ name: f.name, blob: f.blob })), view: m.view || null, parts: m.parts || null })), modelActive: P.modelActive || null, refs: (P.refs || []).map(r => ({ id: r.id, name: r.name, blob: r.blob })), refActive: P.refActive || null, stamps: (P.stamps || []).map(st => ({ id: st.id, w: st.w, h: st.h, blob: st.blob, strokes: st.strokes ? packStrokes(st.strokes) : null })), activeStamp: P.activeStamp || null, laneMute: P.laneMute || [false, false] };
+    script: P.script || null, loop: P.loop || null, tips: P.tips || null, audio: (P.audio || []).map(c => ({ id: c.id, name: c.name, start: c.start, lane: c.lane, dur: c.dur, blob: c.blob, tin: c.tin ?? null, tout: c.tout ?? null, fx: c.fx || null, env: c.env && c.env.length ? c.env.map(k => ({ t: k.t, g: k.g })) : null })), models: (P.models || []).map(m => ({ id: m.id, name: m.name, files: modelFiles(m).map(f => ({ name: f.name, blob: f.blob })), view: m.view || null, parts: m.parts || null })), modelActive: P.modelActive || null, refs: (P.refs || []).map(r => ({ id: r.id, name: r.name, blob: r.blob })), refActive: P.refActive || null, stamps: (P.stamps || []).map(st => ({ id: st.id, w: st.w, h: st.h, blob: st.blob, strokes: st.strokes ? packStrokes(st.strokes) : null })), activeStamp: P.activeStamp || null, laneMute: P.laneMute || [false, false] };
 }
 function hydrate(o) {
   return { name: o.name || "Untitled board", w: +o.width || 1920, h: +o.height || 1080, frame: o.frame && +o.frame.w ? { x: +o.frame.x, y: +o.frame.y, w: +o.frame.w } : null, panels: o.panels.map(p => Object.assign(newPanel(p.scene), {
@@ -2610,6 +2660,7 @@ function hydrate(o) {
     laneMute: Array.isArray(o.laneMute) ? o.laneMute.slice(0, 2) : [false, false],
     script: o.script && Array.isArray(o.script.lines) ? o.script : null,
     loop: o.loop && isFinite(o.loop.a) && isFinite(o.loop.b) && o.loop.b > o.loop.a ? { a: +o.loop.a, b: +o.loop.b } : null,
+    tips: o.tips && typeof o.tips === "object" ? o.tips : null,
     audio: (o.audio || []).map(c => ({ id: c.id || uid(), name: c.name || "Audio", start: +c.start || 0, lane: c.lane ? 1 : 0, dur: +c.dur || 1, blob: c.blob || null, tin: c.tin != null ? +c.tin : null, tout: c.tout != null ? +c.tout : null, fx: c.fx || null, env: Array.isArray(c.env) ? c.env.map(k => ({ t: +k.t || 0, g: clamp(+k.g, 0, 1) })) : null, buffer: null, peaks: null, drawnW: 0 })) };
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { if (floatSel) applyFloat(); save(); } });
@@ -4057,7 +4108,7 @@ async function openBoardFile(f, handle) {
   for (const m of o.models || []) { if (m.blob) m.files = [{ name: (m.name || "model") + ".stl", blob: m.blob }]; for (const f of m.files || []) f.blob = typeof f.blob === "string" ? dataURLToBlob(f.blob) : f.blob; }
     for (const st of o.stamps || []) st.blob = st.blob ? dataURLToBlob(st.blob) : null;
     for (const k of o.links || []) k.blob = k.blob ? dataURLToBlob(k.blob) : null;
-    selClip = null; busy = true; floatSel = null; P = hydrate(o); setDocSize(P.w, P.h); active = clamp(o.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
+    selClip = null; busy = true; floatSel = null; P = hydrate(o); setDocSize(P.w, P.h); await boardTipsIn(P); active = clamp(o.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
     undoStack = []; redoStack = []; updUndo(); renderAll(); fit(); save(); toast("Project opened."); decodeAll();
     for (const p of P.panels) if (!p.thumb) { const c = await getComp(p); p.thumb = thumbFrom(c); } renderStrip();
   });
@@ -5626,9 +5677,37 @@ function selDrag(s, d) {
   floatSel.quad = q; requestRender();
   if (s.mode === "rotate") $("selStraight").hidden = Math.abs(selAngle()) < 0.002;
 }
+// Cutter: while you draw the loop, the parts of lines that will be cut out light up, and the loop shows where it will close
+function drawCutPreview(c, s, lw) {
+  const pts = s.pts, L = activeLayer(), path = new Path2D();
+  path.moveTo(pts[0].x, pts[0].y); for (const p of pts) path.lineTo(p.x, p.y); path.closePath();
+  c.save();
+  c.fillStyle = "rgba(255,122,48,.08)"; c.fill(path);
+  if (isVec(L)) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    c.strokeStyle = "rgba(255,122,48,.95)"; c.lineCap = "round"; c.lineJoin = "round";
+    for (const st of vstrokes(L)) {
+      const bb = st.bb || (st.bb = strokeBB(st.pts)); if (bb[2] < x0 || bb[0] > x1 || bb[3] < y0 || bb[1] > y1) continue;
+      const a = st.pts; let on = false;
+      c.beginPath();
+      for (let i = 0; i < a.length; i += 3) {
+        const ins = pickCtx.isPointInPath(path, a[i], a[i + 1]);
+        if (ins) { c.lineWidth = Math.max(3 * lw, a[i + 2] * 2 + 3 * lw); if (on) c.lineTo(a[i], a[i + 1]); else c.moveTo(a[i], a[i + 1]); on = true; } else on = false;
+      }
+      c.stroke();
+    }
+  }
+  // the loop itself, plus the closing line back to where you started
+  c.lineWidth = 2 * lw; c.setLineDash([]); c.strokeStyle = "#ff7a30";
+  c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const p of pts) c.lineTo(p.x, p.y); c.stroke();
+  const e = pts[pts.length - 1]; c.setLineDash([5 * lw, 4 * lw]); c.beginPath(); c.moveTo(e.x, e.y); c.lineTo(pts[0].x, pts[0].y); c.stroke();
+  c.setLineDash([]); c.fillStyle = "#ff7a30"; c.beginPath(); c.arc(pts[0].x, pts[0].y, 4 * lw, 0, 7); c.fill();
+  c.restore();
+}
 function drawSelOverlay(c) {
   const lw = 1 / vs;
-  if (stroke && stroke.tool === "lasso" && stroke.pts.length > 1) {
+  if (stroke && stroke.tool === "lasso" && stroke.cut && stroke.pts.length > 1) { drawCutPreview(c, stroke, lw); }
+  else if (stroke && stroke.tool === "lasso" && stroke.pts.length > 1) {
     c.save(); c.lineWidth = 1.5 * lw; c.setLineDash([6 * lw, 4 * lw]); c.strokeStyle = "#3d8ef0";
     c.beginPath(); c.moveTo(stroke.pts[0].x, stroke.pts[0].y); for (const p of stroke.pts) c.lineTo(p.x, p.y); c.stroke(); c.restore();
   }
@@ -6310,11 +6389,11 @@ function savePreset(tool) {
 }
 function usePreset(pr) {
   if (!S.tools[pr.tool]) return;
-  Object.assign(S.tools[pr.tool], pr.tool === "airbrush" ? { soft: false, opMin: 1, flowMin: 0.15 } : pr.tool === "eraser" ? { hard: 100, flow: 50 } : { taperIn: 0, taperOut: 0, mouseWeight: false }, JSON.parse(JSON.stringify(pr.s)));
+  Object.assign(S.tools[pr.tool], pr.tool === "airbrush" ? { soft: false, opMin: 1, flowMin: 0.15, tip: null } : pr.tool === "eraser" ? { hard: 100, flow: 50 } : { taperIn: 0, taperOut: 0, mouseWeight: false }, JSON.parse(JSON.stringify(pr.s)));
   setTool(pr.tool); saveSettings(); renderBrushBar();
   sizePreviewUntil = performance.now() + 700; clearTimeout(sizePrevTimer); sizePrevTimer = setTimeout(requestRender, 720); requestRender();
 }
-function presetMatches(pr) { const t = S.tools[pr.tool]; return S.tool === pr.tool && t && t.size === pr.s.size && t.opacity === pr.s.opacity && !!(t.taperIn || t.taperOut) === !!(pr.s.taperIn || pr.s.taperOut) && (pr.tool !== "eraser" || (t.hard ?? 100) === (pr.s.hard ?? 100)); }
+function presetMatches(pr) { const t = S.tools[pr.tool]; return S.tool === pr.tool && t && t.size === pr.s.size && t.opacity === pr.s.opacity && (t.tip || null) === (pr.s.tip || null) && !!(t.taperIn || t.taperOut) === !!(pr.s.taperIn || pr.s.taperOut) && (pr.tool !== "eraser" || (t.hard ?? 100) === (pr.s.hard ?? 100)); }
 function renderBrushBar() {
   const box = $("bbList"); if (!box) return; box.textContent = "";
   $("brushbar").classList.toggle("collapsed", !!S.bbCollapsed);
@@ -6924,7 +7003,7 @@ async function openExported(o, keepQuiet) {
   for (const m of o.models || []) { if (m.blob) m.files = [{ name: (m.name || "model") + ".stl", blob: m.blob }]; for (const f of m.files || []) f.blob = typeof f.blob === "string" ? dataURLToBlob(f.blob) : f.blob; }
   for (const st of o.stamps || []) st.blob = st.blob ? dataURLToBlob(st.blob) : null;
   for (const k of o.links || []) k.blob = k.blob ? dataURLToBlob(k.blob) : null;
-  selClip = null; busy = true; floatSel = null; P = hydrate(o); P.savedAt = o.savedAt || 0; setDocSize(P.w, P.h); active = clamp(o.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
+  selClip = null; busy = true; floatSel = null; P = hydrate(o); P.savedAt = o.savedAt || 0; setDocSize(P.w, P.h); await boardTipsIn(P); active = clamp(o.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
   P.audio = P.audio || []; P.links = P.links || {}; P.stamps = P.stamps || []; P.refs = P.refs || []; P.models = P.models || [];
   undoStack = []; redoStack = []; updUndo(); renderAll(); fit(); save(); if (!keepQuiet) toast("Board opened."); decodeAll();
   for (const p of P.panels) if (!p.thumb) { const c = await getComp(p); p.thumb = thumbFrom(c); } renderStrip();
@@ -7106,14 +7185,203 @@ function parseTbr(text) {
   }
   return { presets: out, notes: [...notes] };
 }
+/* ---------- reading Photoshop (.abr), Krita (.kpp, .bundle) and GIMP (.gbr, .gih) brushes ---------- */
+const u8str = (u, a, n) => { let o = ""; for (let i = 0; i < n; i++) o += String.fromCharCode(u[a + i]); return o; };
+function findBytes(u, pat, from = 0, to = u.length) {
+  const P = typeof pat === "string" ? [...pat].map(c => c.charCodeAt(0)) : pat, n = P.length;
+  outer: for (let i = from; i <= to - n; i++) { for (let j = 0; j < n; j++) if (u[i + j] !== P[j]) continue outer; return i; }
+  return -1;
+}
+function packbits(u, p, outLen) {   // Photoshop's run-length compression for one row
+  const out = new Uint8Array(outLen); let o = 0;
+  while (o < outLen && p < u.length) {
+    let n = u[p++]; if (n > 127) n -= 256;
+    if (n >= 0) { for (let i = 0; i <= n && o < outLen; i++) out[o++] = u[p++]; }
+    else if (n !== -128) { const v = u[p++]; for (let i = 0; i < 1 - n && o < outLen; i++) out[o++] = v; }
+  }
+  return { out, p };
+}
+function abrImage(dv, u, p, w, h, depth, comp) {   // -> gray Uint8Array (w*h)
+  const bpp = depth >> 3 || 1, rowLen = w * bpp, gray = new Uint8Array(w * h);
+  const put = (row, y) => { for (let x = 0; x < w; x++) gray[y * w + x] = row[x * bpp]; };   // 16-bit: keep the high byte
+  if (!comp) { for (let y = 0; y < h; y++) put(u.subarray(p + y * rowLen, p + (y + 1) * rowLen), y); return gray; }
+  let q = p + h * 2;   // row byte counts first, then the rows
+  for (let y = 0; y < h; y++) { const len = dv.getUint16(p + y * 2); const r = packbits(u, q, rowLen); put(r.out, y); q += len; }
+  return gray;
+}
+function descText(dv, u, at) { const n = dv.getUint32(at); let o = ""; for (let i = 0; i < n; i++) { const c = dv.getUint16(at + 4 + i * 2); if (c) o += String.fromCharCode(c); } return o; }
+function descNum(dv, u, seg0, seg1, key) { const i = findBytes(u, key + "UntF", seg0, seg1); return i < 0 ? null : dv.getFloat64(i + key.length + 8); }
+function parseABR(buf, fileName) {
+  const dv = new DataView(buf), u = new Uint8Array(buf), ver = dv.getUint16(0), base = (fileName || "Brush").replace(/\.[^.]+$/, "");
+  const presets = [], notes = new Set();
+  const mk = (name, tip, diam, spacing, hard, minD) => ({ id: uid(), tool: "airbrush", name, s: { size: clamp(Math.round(diam || 30), 1, 400), opacity: 100, min: minD != null ? clamp(minD, 0.02, 1) : 1, soft: true, opMin: 1, flow: 100, flowMin: 0.6, hard: clamp(Math.round(hard ?? 100), 0, 90), spacing: clamp(Math.round(spacing || 25), 1, 100), grain: 0, curve: 1, tip: tip || null } });
+  if (ver === 1 || ver === 2) {
+    const count = dv.getUint16(2); let p = 4;
+    for (let i = 0; i < count && p < u.length; i++) {
+      const type = dv.getUint16(p), size = dv.getUint32(p + 2), start = p + 6; let q = start;
+      if (type === 1) { q += 4; const sp = dv.getUint16(q), dm = dv.getUint16(q + 2), hard = dv.getUint16(q + 8); presets.push(mk(`${base} ${i + 1}`, null, dm, sp, hard)); }
+      else if (type === 2) {
+        q += 4; const sp = dv.getUint16(q); q += 2; let name = `${base} ${i + 1}`;
+        if (ver === 2) { const n = dv.getUint32(q); let nm = ""; for (let k = 0; k < n; k++) { const c = dv.getUint16(q + 4 + k * 2); if (c) nm += String.fromCharCode(c); } q += 4 + n * 2; if (nm.trim()) name = nm.trim(); }
+        q += 1 + 8; const top = dv.getInt32(q), left = dv.getInt32(q + 4), bottom = dv.getInt32(q + 8), right = dv.getInt32(q + 12); q += 16;
+        const depth = dv.getUint16(q), comp = u[q + 2]; q += 3; const w = right - left, h = bottom - top;
+        if (w > 0 && h > 0 && w * h < 3e7) { const g = grayFixInvert(abrImage(dv, u, q, w, h, depth, comp), w, h), t = tipFromGray(g, w, h, name); presets.push(mk(name, t.id, Math.max(w, h), sp)); }
+      }
+      p = start + size;
+    }
+    return { presets, notes: [...notes] };
+  }
+  if (ver < 6) throw new Error("This Photoshop brush file is in a format the app can't read yet.");
+  const sub = dv.getUint16(2), secs = {}; let p = 4;
+  while (p + 12 <= u.length && u8str(u, p, 4) === "8BIM") { const key = u8str(u, p + 4, 4), size = dv.getUint32(p + 8); secs[key] = [p + 12, p + 12 + size]; p += 12 + size + (size % 2); }
+  const tips = {};
+  if (secs.samp) {
+    let q = secs.samp[0];
+    while (q + 4 < secs.samp[1]) {
+      const bs = dv.getUint32(q); let be = bs; while (be % 4) be++; const next = q + 4 + be; let r = q + 4;
+      const kl = u[r], key = u8str(u, r + 1, kl); r += 37; r += sub === 1 ? 10 : 264;
+      const top = dv.getInt32(r), left = dv.getInt32(r + 4), bottom = dv.getInt32(r + 8), right = dv.getInt32(r + 12); r += 16;
+      const depth = dv.getUint16(r), comp = u[r + 2]; r += 3; const w = right - left, h = bottom - top;
+      if (w > 0 && h > 0 && w * h < 3e7) { try { tips[key] = { w, h, g: grayFixInvert(abrImage(dv, u, r, w, h, depth, comp), w, h) }; } catch (e) {} }
+      if (!bs) break; q = next;
+    }
+  }
+  // settings and names: one "brushPreset" object per brush in the description section
+  const used = new Set();
+  if (secs.desc) {
+    const [d0, d1] = secs.desc, starts = []; let i = d0;
+    while ((i = findBytes(u, "brushPreset", i, d1)) >= 0) { starts.push(i); i += 11; }
+    starts.forEach((st, k) => {
+      const en = starts[k + 1] || d1, ni = findBytes(u, "Nm  TEXT", st, en), ni2 = ni >= 0 ? findBytes(u, "Nm  TEXT", ni + 8, en) : -1;
+      let name = ni >= 0 ? descText(dv, u, ni + 8).trim() : "";
+      if ((!name || /^\d+$/.test(name)) && ni2 >= 0) { const tn = descText(dv, u, ni2 + 8).trim(); if (tn) name = name ? `${tn} (${name})` : tn; }
+      if (!name) name = `${base} ${k + 1}`;
+      const si = findBytes(u, "sampledDataTEXT", st, en), key = si >= 0 ? descText(dv, u, si + 15) : null;
+      const dm = descNum(dv, u, st, en, "Dmtr"), sp = descNum(dv, u, st, en, "Spcn"), hd = descNum(dv, u, st, en, "Hrdn");
+      const dyn = findBytes(u, "useTipDynamicsbool", st, en), dynOn = dyn >= 0 && u[dyn + 18] === 1, md = descNum(dv, u, st, en, "minimumDiameter");
+      let tip = null; if (key && tips[key]) { const T = tips[key]; tip = tipFromGray(T.g, T.w, T.h, name).id; used.add(key); }
+      else if (key) return;   // a brush whose picture wasn't in the file
+      if (findBytes(u, "dualBrush", st, en) >= 0 && findBytes(u, "useDualBrushbool\x01", st, en) >= 0) notes.add("dual brush");
+      if (findBytes(u, "useScatterbool\x01", st, en) >= 0) notes.add("scattering");
+      presets.push(mk(name, tip, dm ?? (key ? Math.max(tips[key].w, tips[key].h) : 30), sp ?? 25, tip ? 100 : hd ?? 100, dynOn && md != null ? md / 100 : null));
+    });
+  }
+  // tips the description didn't mention still come in, with simple settings
+  let n = 1; for (const key in tips) if (!used.has(key)) { const T = tips[key], nm = `${base} tip ${n++}`, t = tipFromGray(T.g, T.w, T.h, nm); presets.push(mk(nm, t.id, Math.max(T.w, T.h), 25)); }
+  if (!presets.length) throw new Error("No brushes were found in this file.");
+  return { presets, notes: [...notes] };
+}
+function parseGBR(buf, nameHint) {   // GIMP brush: one picture. Returns { gray, w, h, name, spacing }
+  const dv = new DataView(buf), u = new Uint8Array(buf), hs = dv.getUint32(0), ver = dv.getUint32(4), w = dv.getUint32(8), h = dv.getUint32(12), bytes = dv.getUint32(16);
+  const magic = ver >= 2 ? u8str(u, 20, 4) : "", spacing = ver >= 2 ? dv.getUint32(24) : 25;
+  const nameAt = ver >= 2 ? 28 : 20; let name = new TextDecoder().decode(u.subarray(nameAt, hs)).replace(/\0.*$/s, "").trim();
+  if ((ver >= 2 && magic !== "GIMP") || !w || !h || w * h > 3e7) throw new Error("That brush tip file couldn't be read.");
+  const g = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = bytes === 4 ? u[hs + i * 4 + 3] : u[hs + i * bytes];
+  return { gray: g, w, h, name: name || nameHint || "Brush tip", spacing };
+}
+function parseGIH(buf, nameHint) {   // GIMP image pipe: a few text lines, then the first of its GIMP brushes
+  const u = new Uint8Array(buf); let nl = 0, p = 0; while (p < u.length && nl < 2) { if (u[p] === 10) nl++; p++; }
+  const first = new TextDecoder().decode(u.subarray(0, p)).split("\n")[0].trim();
+  const r = parseGBR(buf.slice(p), first || nameHint); r.name = first || r.name; return r;
+}
+async function grayFromImageBlob(blob) {   // a PNG brush tip: dark (or solid) parts paint
+  const bm = await createImageBitmap(blob), w = bm.width, h = bm.height, c = mkCanvas(w, h), x = c.getContext("2d"); x.drawImage(bm, 0, 0);
+  const d = x.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h); let alpha = false;
+  for (let i = 0; i < w * h; i++) if (d[i * 4 + 3] < 250) { alpha = true; break; }
+  for (let i = 0; i < w * h; i++) { const lum = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11); g[i] = alpha ? Math.round(d[i * 4 + 3] * (lum > 230 ? 1 : (255 - lum) / 255)) : Math.round(255 - lum); }
+  return { gray: g, w, h };
+}
+async function inflate(bytes, raw) { const ds = new DecompressionStream(raw ? "deflate-raw" : "deflate"); return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer()); }
+async function readZip(buf) {   // -> Map(name -> Uint8Array)
+  const dv = new DataView(buf), u = new Uint8Array(buf), out = new Map();
+  let e = u.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("That bundle couldn't be opened.");
+  const n = dv.getUint16(e + 10, true); let c = dv.getUint32(e + 16, true);
+  for (let i = 0; i < n; i++) {
+    if (dv.getUint32(c, true) !== 0x02014b50) break;
+    const method = dv.getUint16(c + 10, true), csize = dv.getUint32(c + 20, true), nl = dv.getUint16(c + 28, true), xl = dv.getUint16(c + 30, true), cl = dv.getUint16(c + 32, true), lo = dv.getUint32(c + 42, true);
+    const name = new TextDecoder().decode(u.subarray(c + 46, c + 46 + nl)); c += 46 + nl + xl + cl;
+    const ln = dv.getUint16(lo + 26, true), lx = dv.getUint16(lo + 28, true), start = lo + 30 + ln + lx, data = u.subarray(start, start + csize);
+    try { out.set(name, method === 0 ? data : await inflate(data, true)); } catch (er) {}
+  }
+  return out;
+}
+async function kppXML(bytes) {   // the brush settings are a text block inside the preset's PNG picture
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); let p = 8;
+  while (p + 8 <= bytes.length) {
+    const len = dv.getUint32(p), type = u8str(bytes, p + 4, 4), body = bytes.subarray(p + 8, p + 8 + len);
+    if (type === "tEXt" || type === "zTXt" || type === "iTXt") {
+      const z = body.indexOf(0), key = u8str(body, 0, z);
+      if (key === "preset") {
+        if (type === "tEXt") return new TextDecoder("latin1").decode(body.subarray(z + 1));
+        if (type === "zTXt") return new TextDecoder().decode(await inflate(body.subarray(z + 2)));
+        const comp = body[z + 1]; let q = z + 3; q = body.indexOf(0, q) + 1; q = body.indexOf(0, q) + 1;
+        const rest = body.subarray(q); return new TextDecoder().decode(comp ? await inflate(rest) : rest);
+      }
+    }
+    p += 12 + len;
+  }
+  throw new Error("That Krita preset doesn't have brush settings the app can read.");
+}
+function kppParams(xml) {
+  const doc = new DOMParser().parseFromString(xml, "text/xml"), root = doc.documentElement, m = {};
+  for (const el of doc.querySelectorAll("param")) m[el.getAttribute("name")] = el.textContent;
+  return { name: root.getAttribute("name") || "Krita brush", op: root.getAttribute("paintopid") || "paintbrush", m };
+}
+function curveStart(txt) { const mm = /<curve>\s*([\d.]+),([\d.]+)/.exec(txt || ""); return mm ? clamp(+mm[2], 0, 1) : null; }
+async function kppToPreset(bytes, tipsByName, notes) {
+  const { name, op, m } = kppParams(await kppXML(bytes));
+  if (op !== "paintbrush") notes.add(`${op} brushes (brought in as a regular brush)`);
+  const bd = new DOMParser().parseFromString(m.brush_definition || "<Brush/>", "text/xml").documentElement;
+  const type = bd.getAttribute("type") || "auto_brush", spacingF = +(bd.getAttribute("spacing") || 0.1);
+  let size = 40, hard = 90, tip = null;
+  if (type === "auto_brush") {
+    const mg = bd.querySelector("MaskGenerator"); if (mg) { size = +(mg.getAttribute("diameter") || 40); const id = mg.getAttribute("id") || "default"; hard = id === "default" ? Math.round(clamp(+(mg.getAttribute("hfade") || 1), 0, 1) * 90) : 0; }
+  } else {
+    const fn = (bd.getAttribute("filename") || "").split("/").pop(), t = tipsByName.get(fn.toLowerCase()) || [...TIPS.values()].find(x => (x.file || "").toLowerCase() === fn.toLowerCase());
+    if (t) { tip = t.id; size = Math.round((t.ow || t.cv.width) * +(bd.getAttribute("scale") || 1)); }
+    else notes.add(`the brush picture "${fn}" (bring in the .bundle, or the picture file, to get it)`);
+  }
+  const pressSize = m.PressureSize === "true" && m.SizeUseCurve !== "false", minS = pressSize ? curveStart(m.SizeSensor) : null;
+  const opPress = m.PressureOpacity === "true" || m.OpacityUseCurve === "true", minO = opPress ? curveStart(m.OpacitySensor) : null;
+  return { id: uid(), tool: "airbrush", name: name.replace(/^[a-z]\)_/i, "").replace(/_/g, " "), s: { size: clamp(Math.round(size), 1, 400), opacity: clamp(Math.round(+(m.OpacityValue ?? 1) * 100), 5, 100), min: minS != null ? Math.max(0.02, minS) : 1, soft: true, opMin: minO != null ? Math.max(0.05, minO) : 1, flow: clamp(Math.round(+(m.FlowValue ?? 1) * 100), 1, 100), flowMin: 0.6, hard, spacing: clamp(Math.round(spacingF * 100), 1, 100), grain: 0, curve: 1, tip } };
+}
+async function tipFileToTip(name, bytes) {
+  const low = name.toLowerCase(), buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), base = name.split("/").pop();
+  let r;
+  if (low.endsWith(".gbr")) r = parseGBR(buf, base);
+  else if (low.endsWith(".gih")) r = parseGIH(buf, base);
+  else if (low.endsWith(".png")) r = await grayFromImageBlob(new Blob([bytes], { type: "image/png" }));
+  else return null;
+  const t = tipFromGray(r.gray, r.w, r.h, (r.name || base).replace(/\.[^.]+$/, "")); t.file = base; t.spacing = r.spacing; return t;
+}
 async function importBrushFile(f) {
   try {
-    if (/\.abr$/i.test(f.name)) { toast("Photoshop brushes (.abr) aren't supported yet. Storyboard Pro and Harmony brushes (.tbr) are."); return; }
-    const { presets, notes } = parseTbr(await f.text());
-    S.presets.push(...presets); saveSettings(); renderBrushBar();
+    const low = f.name.toLowerCase(); let presets = [], notes = [];
+    if (low.endsWith(".abr")) ({ presets, notes } = parseABR(await f.arrayBuffer(), f.name));
+    else if (low.endsWith(".kpp")) { const ns = new Set(); presets = [await kppToPreset(new Uint8Array(await f.arrayBuffer()), new Map(), ns)]; notes = [...ns]; }
+    else if (low.endsWith(".bundle") || low.endsWith(".zip")) {
+      const files = await readZip(await f.arrayBuffer()), tipsByName = new Map(), ns = new Set();
+      for (const [n, b] of files) if (/^brushes\//i.test(n) && /\.(png|gbr|gih)$/i.test(n)) { try { const t = await tipFileToTip(n, b); if (t) tipsByName.set(n.split("/").pop().toLowerCase(), t); } catch (e) {} }
+      for (const [n, b] of files) if (/\.kpp$/i.test(n)) { try { presets.push(await kppToPreset(b, tipsByName, ns)); } catch (e) {} }
+      if (!presets.length) for (const t of tipsByName.values()) presets.push({ id: uid(), tool: "airbrush", name: t.name, s: { size: clamp(t.ow || 60, 1, 400), opacity: 100, min: 1, soft: true, opMin: 1, flow: 100, flowMin: 0.6, hard: 90, spacing: clamp(t.spacing || 25, 1, 100), grain: 0, curve: 1, tip: t.id } });
+      notes = [...ns];
+    }
+    else if (/\.(gbr|gih|png)$/.test(low)) {
+      const t = await tipFileToTip(f.name, new Uint8Array(await f.arrayBuffer()));
+      presets = [{ id: uid(), tool: "airbrush", name: t.name, s: { size: clamp(t.ow || 60, 1, 400), opacity: 100, min: 1, soft: true, opMin: 1, flow: 100, flowMin: 0.6, hard: 90, spacing: clamp(t.spacing || 25, 1, 100), grain: 0, curve: 1, tip: t.id } }];
+    }
+    else ({ presets, notes } = parseTbr(await f.text()));
+    if (!presets.length) throw new Error("No brushes were found in this file.");
+    const MAX = 80; if (presets.length > MAX) { notes.push(`only the first ${MAX} of ${presets.length} brushes`); presets = presets.slice(0, MAX); }
+    // keep only the tips the new brushes use
+    const keep = new Set(presets.map(p => p.s.tip).filter(Boolean)); for (const [id, t] of TIPS) if (!t.fromBoard && !keep.has(id) && !S.presets.some(p => p.s.tip === id)) TIPS.delete(id);
+    S.presets.push(...presets); saveSettings(); await saveTips(); renderBrushBar();
     if (presets[0]) usePreset(presets[0]);
-    toast(`Added ${presets.length} brush${presets.length === 1 ? "" : "es"} to your brush palette: ${presets.map(p => p.name).join(", ")}.` + (notes.length ? ` Not carried over: ${notes.join(", ")}.` : ""), true);
-  } catch (e) { toast(e.message || "Couldn't read that brush file."); }
+    const names = presets.slice(0, 6).map(p => p.name).join(", ") + (presets.length > 6 ? ` and ${presets.length - 6} more` : "");
+    toast(`Added ${presets.length} brush${presets.length === 1 ? "" : "es"} to your brush palette: ${names}.` + (notes.length ? ` Not carried over: ${notes.join(", ")}.` : ""), true);
+  } catch (e) { console.warn(e); toast(e.message || "Couldn't read that brush file."); }
 }
 $("brushFile").addEventListener("change", e => { const f = e.target.files[0]; if (f) importBrushFile(f); });
 
@@ -7180,7 +7448,7 @@ async function restoreBackup(b) {
     if (floatSel) applyFloat();
     await snapshotNow("Before restoring");
     busy = true; selClip = null; floatSel = null;
-    P = hydrate(b.data); setDocSize(P.w, P.h); active = clamp(b.data.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
+    P = hydrate(b.data); setDocSize(P.w, P.h); await boardTipsIn(P); active = clamp(b.data.active || 0, 0, P.panels.length - 1); await loadActive(); busy = false;
     P.audio = P.audio || []; P.links = P.links || {}; P.stamps = P.stamps || []; P.refs = P.refs || []; P.models = P.models || [];
     undoStack = []; redoStack = []; updUndo(); renderAll(); fit(); await save(); decodeAll();
     toast(`Restored the board from ${fmtWhen(b.at)}.`);
@@ -7738,7 +8006,7 @@ $("appVer").textContent = "v" + APP_VERSION;
       { t: "Full screen", id: "fsBtn" }, { t: "Play full screen", id: "playBtn" }]],
     ["Tools", [tool("pencil"), tool("ink"), tool("marker"), tool("texture"), tool("airbrush"), tool("eraser"), sep,
       tool("fill"), tool("stamp"), tool("picker"), tool("select"), tool("lasso"), tool("camera"), tool("move"), sep,
-      { t: "Straight lines", id: "lineBtn", on: () => !!lineLock }, { t: "Draw behind", fn: () => setDrawBehind(!S.drawBehind), act: "behind", on: () => !!S.drawBehind }, { t: "Import brushes (Storyboard Pro .tbr)…", fn: () => { $("brushFile").value = ""; $("brushFile").click(); } }, { t: "Reset brushes to original settings", fn: () => confirmBar("Put Pencil, Ink, Brush, Texture and Eraser back to their original settings? Brushes saved in the brush palette keep their sizes.", "Reset", () => resetBrushes()) }, { t: "Settings for this tool…", fn: () => openToolSettings(S.tool, document.querySelector(`.tool[data-tool="${S.tool}"]`)), en: () => !!S.tools[S.tool] && S.tool !== "stamp" }]],
+      { t: "Straight lines", id: "lineBtn", on: () => !!lineLock }, { t: "Draw behind", fn: () => setDrawBehind(!S.drawBehind), act: "behind", on: () => !!S.drawBehind }, { t: "Import brushes (Photoshop, Krita, Storyboard Pro)…", fn: () => { $("brushFile").value = ""; $("brushFile").click(); } }, { t: "Reset brushes to original settings", fn: () => confirmBar("Put Pencil, Ink, Brush, Texture and Eraser back to their original settings? Brushes saved in the brush palette keep their sizes.", "Reset", () => resetBrushes()) }, { t: "Settings for this tool…", fn: () => openToolSettings(S.tool, document.querySelector(`.tool[data-tool="${S.tool}"]`)), en: () => !!S.tools[S.tool] && S.tool !== "stamp" }]],
     ["Layer", [
       { t: "Flop layer", fn: () => flopLayer(), act: "flopLayer" }, { t: "Rename layer…", fn: () => setTimeout(() => renameLayerInline(activeLayer().id), 0) }, { t: "Copy layer", fn: () => copyLayers() }, { t: "Paste layer in place", fn: () => pasteLayers(), en: () => !!layerClip }, { t: "Duplicate layer", fn: () => duplicateLayer() }, { t: "Merge selected layers…", fn: () => askMerge(), en: () => !!multiLayers() }, { t: "New pixel layer", id: "addLayerBtn" }, { t: "New vector layer", id: "addVecBtn" }, { t: "Import picture as a layer…", id: "importImgBtn2" }, sep,
       { t: "Replace this layer's art with…", fn: () => openSwap() }, { t: "Copy this layer to other panels…", id: "replaceBtn" }, { t: "Clean up layers…", id: "cleanBtn" }, { t: "Keep layer in library", fn: () => libKeepDrawing() }, { t: "Unlink layer", id: "unlinkBtn" }, { t: "Convert to pixel layer", id: "toPixelsBtn" }, { t: "Convert to vector layer", id: "toVectorBtn" }, { t: "Extend background to fill the board", fn: () => extendBackground(), en: () => !!activeLayer() && !isVec(activeLayer()) }, sep,
@@ -9219,13 +9487,14 @@ function scDockSet(on, quiet) {
 /* ---------- boot ---------- */
 (async function boot() {
   let saved = null;
+  await loadTips();   // brush tips you imported
   try { saved = await idbGet("project"); } catch (e) { console.warn(e); }
   let emb = null; try { const t = $("embeddedBoard").textContent.trim(); emb = t ? JSON.parse(t) : null; } catch (e) { emb = null; }
   if (emb && Array.isArray(emb.panels) && emb.panels.length && !(saved && saved.name === emb.name && (saved.savedAt || 0) > (emb.savedAt || 0))) {
     resize(); await openExported(emb, true); scrollThumb(); toast(`Opened "${emb.name}". Changes save in this browser. Use Project > Save board file to update the file.`); return;
   }
   if (saved && saved.panels && saved.panels.length) {
-    P = hydrate(saved); setDocSize(P.w, P.h); active = clamp(saved.active || 0, 0, P.panels.length - 1); await loadActive();
+    P = hydrate(saved); setDocSize(P.w, P.h); await boardTipsIn(P); active = clamp(saved.active || 0, 0, P.panels.length - 1); await loadActive();
   } else { await firstRun(); }
   P.audio = P.audio || []; P.links = P.links || {}; P.stamps = P.stamps || []; P.refs = P.refs || []; P.models = P.models || [];
   updUndo(); renderAll(); resize(); scrollThumb(); decodeAll();
